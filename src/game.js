@@ -36,6 +36,17 @@ const Game = (()=>{
     canvas = cnv
     // Initialize audio context and (optionally) begin background loading
     Audio.init()
+    // Pointer/touch controls: map pointer X to paddle target
+    const onPointer = (e) => {
+      // support touch/pointer
+      const x = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX) || 0
+      const pct = x / window.innerWidth
+      // Map 0..1 to -play.x .. play.x
+      const target = (pct * (play.x * 2)) - play.x
+      if(paddle) paddle.userData.targetX = THREE.MathUtils.clamp(target, -play.x+2, play.x-2)
+    }
+    window.addEventListener('pointermove', onPointer, { passive: true })
+    window.addEventListener('touchmove', onPointer, { passive: true })
     
     // Renderer
     renderer = new THREE.WebGLRenderer({canvas, antialias:false, powerPreference:'high-performance'})
@@ -297,6 +308,7 @@ const Game = (()=>{
     lives = 3
     emit('score', score)
     emit('lives', lives)
+    wideActive = false
   }
 
   // Clear transient objects that shouldn't persist between levels
@@ -322,6 +334,8 @@ const Game = (()=>{
         paddle.material.color = new THREE.Color(colors.paddle)
       }
     }
+    // ensure wide flag is cleared so powerups can spawn again
+    wideActive = false
   }
 
   const applyLevelVariation = (lvl)=>{

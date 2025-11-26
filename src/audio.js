@@ -4,15 +4,15 @@ const Audio = (()=>{
 
   // Manifest of named sounds -> URL
   const manifest = {
-    uiClick: '/src/assets/kenney_ui-audio/Audio/click1.ogg',
-    uiSwitch: '/src/assets/kenney_ui-audio/Audio/switch13.ogg',
-    paddle: '/src/assets/kenney_sci-fi-sounds/Audio/laserSmall_001.ogg',
-    brick: '/src/assets/kenney_sci-fi-sounds/Audio/impactMetal_002.ogg',
-    powerup_spawn: '/src/assets/kenney_sci-fi-sounds/Audio/forceField_002.ogg',
-    powerup_collect: '/src/assets/kenney_ui-audio/Audio/switch1.ogg',
-    life_lost: '/src/assets/kenney_sci-fi-sounds/Audio/lowFrequency_explosion_000.ogg',
-    explosion: '/src/assets/kenney_sci-fi-sounds/Audio/explosionCrunch_002.ogg',
-    chaos: '/src/assets/kenney_sci-fi-sounds/Audio/computerNoise_000.ogg'
+    uiClick: new URL('./assets/kenney_ui-audio/Audio/click1.ogg', import.meta.url).href,
+    uiSwitch: new URL('./assets/kenney_ui-audio/Audio/switch13.ogg', import.meta.url).href,
+    paddle: new URL('./assets/kenney_sci-fi-sounds/Audio/laserSmall_001.ogg', import.meta.url).href,
+    brick: new URL('./assets/kenney_sci-fi-sounds/Audio/impactMetal_002.ogg', import.meta.url).href,
+    powerup_spawn: new URL('./assets/kenney_sci-fi-sounds/Audio/forceField_002.ogg', import.meta.url).href,
+    powerup_collect: new URL('./assets/kenney_ui-audio/Audio/switch1.ogg', import.meta.url).href,
+    life_lost: new URL('./assets/kenney_sci-fi-sounds/Audio/lowFrequency_explosion_000.ogg', import.meta.url).href,
+    explosion: new URL('./assets/kenney_sci-fi-sounds/Audio/explosionCrunch_002.ogg', import.meta.url).href,
+    chaos: new URL('./assets/kenney_sci-fi-sounds/Audio/computerNoise_000.ogg', import.meta.url).href
   }
 
   const init = ()=>{

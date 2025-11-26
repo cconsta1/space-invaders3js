@@ -13,6 +13,14 @@ npm run dev
 
 Open the Vite URL (usually http://localhost:5173) and press **Start**.
 
+Build & deploy notes
+
+- Production build: `npm run build` will produce a static `dist/` folder. The audio files are referenced using `import.meta.url` in `src/audio.js`, which lets Vite include them in the build output so they'll work when you deploy (e.g., to Vercel). After building, you can preview with `npm run preview`.
+
+Mobile & controls
+
+- The game supports pointer/touch controls: move your finger left/right to steer the paddle. If the canvas feels unresponsive on mobile/tablet, make sure the device isn't blocking autoplay — tap **Start** to allow audio and input to resume.
+
 Controls
 
 - Arrow Left / Arrow Right — move the paddle
