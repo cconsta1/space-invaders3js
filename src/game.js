@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import Audio from './audio.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
@@ -10,6 +11,8 @@ const Game = (()=>{
   let particles = []
   let powerups = []
   let activePowerupTimers = []
+  let speedMultiplier = 1
+  let wideActive = false
   let score = 0, lives = 3, level = 1
   let rafId, started = false
   const events = new Map()
@@ -31,6 +34,8 @@ const Game = (()=>{
 
   const init = ({canvas:cnv})=>{
     canvas = cnv
+    // Initialize audio context and (optionally) begin background loading
+    Audio.init()
     
     // Renderer
     renderer = new THREE.WebGLRenderer({canvas, antialias:false, powerPreference:'high-performance'})
@@ -156,6 +161,18 @@ const Game = (()=>{
     }
   }
 
+  const addExtraBalls = (count) => {
+    if(balls.length === 0) return
+    const origin = balls[0]
+    for(let i=0; i<count; i++){
+      const b = createBallMesh()
+      b.mesh.position.copy(origin.mesh.position)
+      b.vel.copy(origin.vel).applyAxisAngle(new THREE.Vector3(0,0,1), (Math.random()-0.5)*0.8)
+      scene.add(b.mesh)
+      balls.push(b)
+    }
+  }
+
   const makeBricks = (currentLevel = 1)=>{
     bricks.forEach(b=>scene.remove(b.mesh))
     bricks = []
@@ -222,19 +239,23 @@ const Game = (()=>{
 
   const spawnPowerup = (pos) => {
     const r = Math.random()
+    // Distribution: WIDE 70%, LIFE 20%, MULTI 8%, CHAOS 2%
     let type = 'WIDE'
-    if(r > 0.7) type = 'LIFE'
-    if(r > 0.85) type = 'MULTI'
+    if(r >= 0.7 && r < 0.9) type = 'LIFE'
+    else if(r >= 0.9 && r < 0.98) type = 'MULTI'
+    else if(r >= 0.98) type = 'CHAOS'
 
     const geo = new THREE.OctahedronGeometry(0.4)
     const mat = new THREE.MeshStandardMaterial({ 
-      color: type === 'MULTI' ? '#ffff00' : colors.powerup, 
-      emissive: type === 'MULTI' ? '#ffff00' : colors.powerup, 
+      color: type === 'MULTI' ? '#ffff00' : (type === 'CHAOS' ? '#ff66ff' : colors.powerup), 
+      emissive: type === 'MULTI' ? '#ffff00' : (type === 'CHAOS' ? '#ff66ff' : colors.powerup), 
       emissiveIntensity: 2 
     })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.position.copy(pos)
     scene.add(mesh)
+    // play spawn sound (don't spawn while wide is active)
+    Audio.play('powerup_spawn', { volume: 0.8, playbackRate: 1 })
     powerups.push({ mesh, type, vel: new THREE.Vector3(0, -4, 0) })
   }
 
@@ -242,7 +263,7 @@ const Game = (()=>{
     if(started) return
     started = true
     if(balls.length > 0) {
-      balls[0].vel = new THREE.Vector3((Math.random()-0.5), 1, 0).normalize().multiplyScalar(0.35) // Slower start
+      balls[0].vel = new THREE.Vector3((Math.random()-0.5), 1, 0).normalize().multiplyScalar(0.35 * speedMultiplier) // Slower start (adjusted by level)
     }
     // Don't reset score and lives on continue
     emit('score', score)
@@ -276,6 +297,68 @@ const Game = (()=>{
     lives = 3
     emit('score', score)
     emit('lives', lives)
+  }
+
+  // Clear transient objects that shouldn't persist between levels
+  const clearLevelTransient = ()=>{
+    // remove powerups
+    powerups.forEach(p => scene.remove(p.mesh))
+    powerups = []
+
+    // remove particles
+    particles.forEach(p => scene.remove(p.mesh))
+    particles = []
+
+    // clear powerup timers
+    activePowerupTimers.forEach(timerId => clearTimeout(timerId))
+    activePowerupTimers = []
+
+    // reset paddle visual state
+    if(paddle) {
+      paddle.scale.set(1,1,1)
+      paddle.position.x = 0
+      if(paddle.material){
+        paddle.material.emissive = new THREE.Color(colors.paddle)
+        paddle.material.color = new THREE.Color(colors.paddle)
+      }
+    }
+  }
+
+  const applyLevelVariation = (lvl)=>{
+    // Simple surprise: pick one of a few visual/feel changes per level
+    speedMultiplier = 1 + Math.min(0.5, (lvl - 1) * 0.05)
+
+    const mode = lvl % 3
+    if(mode === 0){
+      // Slightly widen the paddle and tint it cyan
+      if(paddle) paddle.scale.x = 1.3
+      if(paddle && paddle.material) {
+        const col = new THREE.Color().setHSL(0.55, 1, 0.5)
+        paddle.material.color = col
+        paddle.material.emissive = col
+      }
+      // subtle scene tint
+      scene.background = new THREE.Color(0x08101a)
+      scene.fog.color = new THREE.Color(0x08101a)
+    } else if(mode === 1){
+      // speed-focused level: increase ball speed multiplier
+      if(paddle) paddle.scale.x = 1
+      scene.background = new THREE.Color(0x050510)
+      scene.fog.color = new THREE.Color(0x050510)
+    } else {
+      // darker tone
+      if(paddle) paddle.scale.x = 0.9
+      if(paddle && paddle.material) {
+        const col = new THREE.Color().setHSL(0.08, 1, 0.45)
+        paddle.material.color = col
+        paddle.material.emissive = col
+      }
+      scene.background = new THREE.Color(0x10030a)
+      scene.fog.color = new THREE.Color(0x10030a)
+    }
+
+    // play a pleasant level-up sound
+    try{ Audio.play('uiSwitch', { volume: 0.9, playbackRate: 1 }) }catch(e){}
   }
 
   const resize = ()=>{
@@ -349,16 +432,38 @@ const Game = (()=>{
            
            // Apply effect
            if(p.type === 'WIDE') {
-             paddle.scale.x = 1.5
-             const timerId = setTimeout(()=>paddle.scale.x=1, 8000)
-             activePowerupTimers.push(timerId)
+             // If already active, ignore (we also prevent further spawns while active)
+             if(!wideActive){
+               paddle.scale.x = 1.5
+               wideActive = true
+               const timerId = setTimeout(()=>{
+                 paddle.scale.x = 1
+                 wideActive = false
+               }, 8000)
+               activePowerupTimers.push(timerId)
+             }
            } else if (p.type === 'LIFE') {
              lives++
              emit('lives', lives)
            } else if (p.type === 'MULTI') {
-             spawnExtraBalls()
+             // First MULTI turns 1 -> 3 (add 2). Subsequent MULTI add 3 each time: 3 -> 6 -> 9 ...
+             if(balls.length <= 1) addExtraBalls(2)
+             else addExtraBalls(3)
+           } else if (p.type === 'CHAOS') {
+             // Super rare unexpected effect: jitter and recolor remaining bricks
+             bricks.forEach(bk=>{
+               bk.mesh.position.x += (Math.random()-0.5) * 2.0
+               const col = new THREE.Color().setHSL(Math.random()*0.8 + 0.1, 1, 0.45)
+               if(bk.mesh.material){
+                 bk.mesh.material.color = col
+                 bk.mesh.material.emissive = col
+               }
+             })
+             Audio.play('chaos', { volume: 0.9, playbackRate: 1 })
            }
-           
+
+           // play collect sound (generic)
+           Audio.play('powerup_collect', { volume: 0.85 })
            scene.remove(p.mesh)
            powerups.splice(i, 1)
            continue
@@ -402,8 +507,10 @@ const Game = (()=>{
          // English/Spin effect
          vel.x += (pos.x - paddle.position.x) * 0.3
          vel.normalize().multiplyScalar(0.65) // Speed up slightly
-         
-         // Squash effect
+        // Play paddle hit sound (pitch slightly based on horizontal velocity)
+        Audio.play('paddle', { volume: 0.75, playbackRate: 1 + Math.min(0.6, Math.abs(vel.x) * 0.5) })
+
+        // Squash effect
          paddle.scale.y = 0.5
          setTimeout(()=>paddle.scale.y=1, 100)
        }
@@ -431,13 +538,15 @@ const Game = (()=>{
         else vel.y *= -1
 
         spawnParticles(brick.mesh.position, brick.mesh.material.color)
+        // play brick impact sound
+        Audio.play('brick', { volume: 0.95, playbackRate: 0.95 + Math.random() * 0.2 })
         
-        // Chance for powerup
-        if(Math.random() < 0.2) spawnPowerup(brick.mesh.position)
+            // Chance for powerup (don't spawn new powerups while WIDE is active)
+              if(Math.random() < 0.18 && !wideActive) spawnPowerup(brick.mesh.position)
 
-        score += 100
-        emit('score', score)
-        break // Only one brick per frame
+            score += 100
+            emit('score', score)
+            break // Only one brick per frame
       }
     }
 
@@ -451,6 +560,8 @@ const Game = (()=>{
       if(balls.length === 0) {
         lives--
         emit('lives', lives)
+        // play life lost sound
+        Audio.play('life_lost', { volume: 0.95, playbackRate: 1 })
         
         // Clear all powerups immediately
         powerups.forEach(p => scene.remove(p.mesh))
@@ -474,7 +585,10 @@ const Game = (()=>{
     
     // Win
     if(bricks.length === 0) {
+      // clear any falling powerups/particles so they don't persist into the next level
+      clearLevelTransient()
       level++
+      applyLevelVariation(level)
       makeBricks(level)
       resetBall()
       started = false
