@@ -188,18 +188,21 @@ const Game = (()=>{
     bricks.forEach(b=>scene.remove(b.mesh))
     bricks = []
 
-    const rows = 6 + (currentLevel - 1)
-    const cols = 8 + (currentLevel - 1)
+    const rows = 6
+    const cols = 8
     const w = 2.2
     const h = 0.8
     const gap = 0.2
     const startX = -((cols * (w+gap)) / 2) + (w+gap)/2
     const baseY = 4
+
+    // Shift hue palette each level for visual variety
+    const levelHueOffset = ((currentLevel - 1) * 0.15) % 1
     
     for(let r=0; r<rows; r++){
       for(let c=0; c<cols; c++){
-        // Gradient colors
-        const hue = (c / cols) * 0.2 + (r / rows) * 0.5 + 0.5 // Blue to Pink
+        // Gradient colors with level-based hue offset
+        const hue = ((c / cols) * 0.2 + (r / rows) * 0.5 + 0.5 + levelHueOffset) % 1
         const color = new THREE.Color().setHSL(hue, 1, 0.5)
         
         const mat = new THREE.MeshStandardMaterial({
@@ -250,16 +253,20 @@ const Game = (()=>{
 
   const spawnPowerup = (pos) => {
     const r = Math.random()
-    // Distribution: WIDE 70%, LIFE 20%, MULTI 8%, CHAOS 2%
+    // Distribution: WIDE 65%, MULTI 25%, LIFE 10%
     let type = 'WIDE'
-    if(r >= 0.7 && r < 0.9) type = 'LIFE'
-    else if(r >= 0.9 && r < 0.98) type = 'MULTI'
-    else if(r >= 0.98) type = 'CHAOS'
+    if(r >= 0.65 && r < 0.90) type = 'MULTI'
+    else if(r >= 0.90) type = 'LIFE'
+
+    // Distinct colors: WIDE=blue, MULTI=yellow, LIFE=green
+    let col = '#00aaff' // WIDE blue
+    if(type === 'MULTI') col = '#ffff00' // yellow
+    if(type === 'LIFE') col = '#00ff66' // green
 
     const geo = new THREE.OctahedronGeometry(0.4)
     const mat = new THREE.MeshStandardMaterial({ 
-      color: type === 'MULTI' ? '#ffff00' : (type === 'CHAOS' ? '#ff66ff' : colors.powerup), 
-      emissive: type === 'MULTI' ? '#ffff00' : (type === 'CHAOS' ? '#ff66ff' : colors.powerup), 
+      color: col, 
+      emissive: col, 
       emissiveIntensity: 2 
     })
     const mesh = new THREE.Mesh(geo, mat)
@@ -446,34 +453,26 @@ const Game = (()=>{
            
            // Apply effect
            if(p.type === 'WIDE') {
-             // If already active, ignore (we also prevent further spawns while active)
-             if(!wideActive){
+             // If already active, extend the timer; otherwise start it
+             if(wideActive){
+               // Clear existing timer and set a new one to extend duration
+               activePowerupTimers.forEach(timerId => clearTimeout(timerId))
+               activePowerupTimers = []
+             } else {
                paddle.scale.x = 1.5
                wideActive = true
-               const timerId = setTimeout(()=>{
-                 paddle.scale.x = 1
-                 wideActive = false
-               }, 8000)
-               activePowerupTimers.push(timerId)
              }
+             const timerId = setTimeout(()=>{
+               paddle.scale.x = 1
+               wideActive = false
+             }, 8000)
+             activePowerupTimers.push(timerId)
            } else if (p.type === 'LIFE') {
              lives++
              emit('lives', lives)
            } else if (p.type === 'MULTI') {
-             // First MULTI turns 1 -> 3 (add 2). Subsequent MULTI add 3 each time: 3 -> 6 -> 9 ...
-             if(balls.length <= 1) addExtraBalls(2)
-             else addExtraBalls(3)
-           } else if (p.type === 'CHAOS') {
-             // Super rare unexpected effect: jitter and recolor remaining bricks
-             bricks.forEach(bk=>{
-               bk.mesh.position.x += (Math.random()-0.5) * 2.0
-               const col = new THREE.Color().setHSL(Math.random()*0.8 + 0.1, 1, 0.45)
-               if(bk.mesh.material){
-                 bk.mesh.material.color = col
-                 bk.mesh.material.emissive = col
-               }
-             })
-             Audio.play('chaos', { volume: 0.9, playbackRate: 1 })
+             // Always add 3 balls (stacking: 1->4, 4->7, etc.)
+             addExtraBalls(3)
            }
 
            // play collect sound (generic)
@@ -555,12 +554,12 @@ const Game = (()=>{
         // play brick impact sound
         Audio.play('brick', { volume: 0.95, playbackRate: 0.95 + Math.random() * 0.2 })
         
-            // Chance for powerup (don't spawn new powerups while WIDE is active)
-              if(Math.random() < 0.18 && !wideActive) spawnPowerup(brick.mesh.position)
+        // Chance for powerup (can spawn even while WIDE is active since it extends the timer)
+        if(Math.random() < 0.18) spawnPowerup(brick.mesh.position)
 
-            score += 100
-            emit('score', score)
-            break // Only one brick per frame
+        score += 100
+        emit('score', score)
+        break // Only one brick per frame
       }
     }
 
