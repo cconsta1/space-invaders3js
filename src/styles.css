@@ -4,7 +4,7 @@
 html,body,#app{height:100%;width:100%;margin:0;padding:0;font-family:'Share Tech Mono', monospace; overflow:hidden;}
 
 body {
-  background-color: #0a0a0c;
+  background-color: #020203;
   color: #a0a0a8;
 }
 
@@ -28,10 +28,11 @@ body {
 
 .brand {
   font-family: 'Orbitron', sans-serif;
-  font-size: 1.3rem;
-  font-weight: 400;
-  color: #6a6a70;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #00f3ff;
   letter-spacing: 6px;
+  text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff;
 }
 
 .stats {
@@ -47,15 +48,17 @@ body {
 }
 
 .player-label {
-  color: #4a7c8a;
+  color: #00f3ff;
   font-size: 0.85rem;
   letter-spacing: 2px;
+  text-shadow: 0 0 5px #00f3ff;
 }
 
 .ai-label {
-  color: #8a5a4a;
+  color: #ff0099;
   font-size: 0.85rem;
   letter-spacing: 2px;
+  text-shadow: 0 0 5px #ff0099;
 }
 
 .score-value {
@@ -65,15 +68,17 @@ body {
 }
 
 .score-value.player {
-  color: #6a9caa;
+  color: #00f3ff;
+  text-shadow: 0 0 10px #00f3ff;
 }
 
 .score-value.ai {
-  color: #aa7a6a;
+  color: #ff0099;
+  text-shadow: 0 0 10px #ff0099;
 }
 
 .vs {
-  color: #3a3a40;
+  color: #ffffff;
   font-size: 0.9rem;
 }
 
@@ -86,17 +91,24 @@ body {
 }
 
 button {
-  background: rgba(60, 60, 65, 0.3);
-  border: 1px solid rgba(100, 100, 105, 0.3);
-  color: #8a8a90;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid #00f3ff;
+  color: #00f3ff;
   padding: 1rem 3rem;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.9rem;
+  font-size: 1rem;
   letter-spacing: 3px;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(5px);
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+}
+
+button:hover {
+  background: rgba(0, 243, 255, 0.1);
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.5);
+  text-shadow: 0 0 5px #00f3ff;
 }
 
 button:hover {

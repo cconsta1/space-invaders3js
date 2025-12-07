@@ -27,44 +27,44 @@ const Game = (()=>{
   const sizes = { width: window.innerWidth, height: window.innerHeight }
   const play = { x: 12, y: 8, zNear: 4, zFar: -16 }
   
-  // Dystopian muted color palette
+  // Industrial Cyberpunk Palette
   const colors = {
-    paddle: '#4a7c8a',      // Muted teal
-    ball: '#c4b998',        // Pale gold/cream
-    wall: '#2a2a2a',        // Dark gray
-    bg: '#0a0a0c',          // Near black
-    powerup: '#ff00ff',
-    grid: '#1a1a1e',        // Dark gray
-    accent: '#5a5a60'       // Steel gray
+    paddle: '#00f3ff',      // Neon Cyan
+    ball: '#ff0099',        // Neon Magenta
+    wall: '#050505',        // Void Black
+    bg: '#020203',          // Deep dark
+    powerup: '#39ff14',     // Neon Green
+    grid: '#ff0099',        // Magenta Grid
+    accent: '#00f3ff'       // Cyan Accent
   }
 
   const palettes = {
     night: { 
       ...colors, 
-      amb: '#2a2a30', 
-      dir: '#a09070', 
-      floor: '#050508', 
-      grid1: '#2a2a3e', 
-      grid2: '#1a1a25',
-      bg: '#020204',
-      paddle: '#00ffff', // Neon Cyan
-      ball: '#ffffaa'    // Bright glow
+      amb: '#111111', 
+      dir: '#ffffff', 
+      floor: '#000000', 
+      grid1: '#ff0099', 
+      grid2: '#220033',
+      bg: '#050505',
+      paddle: '#00f3ff', 
+      ball: '#ff0099'
     },
-    day: {
-      paddle: '#0099ff', // Vivid Blue
-      ball: '#ff2222',   // Vivid Red
-      wall: '#445566',
-      bg: '#f0f4f8',     // Very light/clean
-      grid1: '#cceeff',
-      grid2: '#eef8ff',
-      accent: '#778899',
+    day: { // Vivid, Cartoonish, Industrial
+      paddle: '#ff3300', // Vivid Orange-Red
+      ball: '#111111',   // Dark Matter
+      wall: '#34495e',   // Dark Blue-Grey
+      bg: '#f0f5fa',     // Cool White/Blue tint
+      grid1: '#b0c4de',  // Light Steel Blue
+      grid2: '#e6e6fa',  // Lavender
+      accent: '#ff3300',
       amb: '#ffffff',
       dir: '#ffffff',
-      floor: '#ddeeff'
+      floor: '#ffffff'
     }
   }
 
-  // Particle Shader - Futuristic Ring/Sparkle
+  // Particle Shader - Shockwave Ring
   const particleVertex = `
     attribute float size;
     attribute float life;
@@ -72,7 +72,7 @@ const Game = (()=>{
     void main() {
       vLife = life;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size * (300.0 / -mvPosition.z);
+      gl_PointSize = size * (500.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `
@@ -82,12 +82,16 @@ const Game = (()=>{
     void main() {
       vec2 coord = gl_PointCoord - vec2(0.5);
       float dist = length(coord);
+      
       if(dist > 0.5) discard;
       
       // Ring effect
-      float ring = smoothstep(0.5, 0.4, dist) - smoothstep(0.4, 0.3, dist);
-      float core = smoothstep(0.1, 0.0, dist);
-      float alpha = (ring * 0.5 + core) * vLife;
+      float ring = smoothstep(0.5, 0.4, dist) - smoothstep(0.3, 0.2, dist);
+      
+      // Core glow
+      float core = 1.0 - smoothstep(0.0, 0.2, dist);
+      
+      float alpha = (ring + core * 0.5) * vLife;
       
       gl_FragColor = vec4(color, alpha);
     }
@@ -119,34 +123,47 @@ const Game = (()=>{
     renderer.toneMapping = THREE.ReinhardToneMapping
 
     scene = new THREE.Scene()
-    // Initialize fog before setting theme
-    scene.fog = new THREE.FogExp2(colors.bg, 0.02)
+    // Initialize fog before setting theme - Deep Cyber Fog
+    scene.fog = new THREE.FogExp2(colors.bg, 0.03)
     
     // Lighting
-    const amb = new THREE.AmbientLight('#ffffff', 0.2)
+    const amb = new THREE.AmbientLight('#111111', 0.5)
     scene.add(amb)
     
-    const dir = new THREE.DirectionalLight('#ffffff', 1)
+    const dir = new THREE.DirectionalLight('#ffffff', 0.5)
     dir.position.set(5, 10, 5)
     scene.add(dir)
+
+    // Add some colored point lights for atmosphere
+    const pLight1 = new THREE.PointLight('#00f3ff', 2, 20)
+    pLight1.position.set(-10, 5, -5)
+    scene.add(pLight1)
+
+    const pLight2 = new THREE.PointLight('#ff0099', 2, 20)
+    pLight2.position.set(10, 5, -5)
+    scene.add(pLight2)
 
     setTheme(currentTheme) // Apply initial theme
 
     camera = new THREE.PerspectiveCamera(50, sizes.width/sizes.height, 0.1, 100)
     camera.position.set(0, 8, 22)
     camera.lookAt(0, 0, -4)
+    camera.userData = { shake: 0 }
 
     clock = new THREE.Clock()
 
     // Post Processing (Bloom + Film)
     const renderScene = new RenderPass(scene, camera)
+    
+    // Soft, atmospheric bloom
     bloomPass = new UnrealBloomPass(new THREE.Vector2(sizes.width, sizes.height), 1.5, 0.4, 0.85)
-    bloomPass.threshold = 0.2
-    bloomPass.strength = 0.6
-    bloomPass.radius = 0.2
+    bloomPass.threshold = 0.15
+    bloomPass.strength = 0.8 // Reduced from 1.2
+    bloomPass.radius = 0.4
     bloomPass.enabled = bloomEnabled
 
-    const filmPass = new FilmPass(0.25, false) // noise intensity, no scanlines
+    const filmPass = new FilmPass(0.2, false) // Reduced noise
+
     const outputPass = new OutputPass()
 
     composer = new EffectComposer(renderer)
@@ -155,10 +172,12 @@ const Game = (()=>{
     composer.addPass(filmPass)
     composer.addPass(outputPass)
     
-    // Grid floor
-    const grid = new THREE.GridHelper(80, 40, '#2a2a40', '#111')
+    // Grid floor - Subtle Industrial Grid
+    const grid = new THREE.GridHelper(80, 40, '#333333', '#111111')
     grid.position.y = -8
     grid.position.z = -10
+    grid.material.opacity = 0.2
+    grid.material.transparent = true
     scene.add(grid)
 
     makePaddle()
@@ -274,27 +293,29 @@ const Game = (()=>{
     
     for(let r=0; r<rows; r++){
       for(let c=0; c<cols; c++){
-        // Gradient colors with level-based hue offset
-        const hue = ((c / cols) * 0.2 + (r / rows) * 0.5 + 0.5 + levelHueOffset) % 1
-        const sat = isDay ? 0.85 : 1.0
-        const light = isDay ? 0.6 : 0.5
+        // Neon Gradient colors
+        const hue = ((c / cols) * 0.3 + (r / rows) * 0.2 + levelHueOffset) % 1
+        const sat = 1.0
+        const light = 0.5
         const color = new THREE.Color().setHSL(hue, sat, light)
         
         const mat = new THREE.MeshStandardMaterial({
           color: color,
           emissive: color,
-          emissiveIntensity: isDay ? 0.2 : 0.8, // Less glow in day
-          roughness: 0.1,
-          metalness: 0.9
+          emissiveIntensity: isDay ? 0.5 : 1.5, // Balanced glow
+          roughness: 0.2,
+          metalness: 0.8
         })
         
         const geo = new THREE.BoxGeometry(w, h, 1)
         const mesh = new THREE.Mesh(geo, mat)
         
-        // Add crisp edges
-        const edges = new THREE.EdgesGeometry(geo)
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 }))
-        mesh.add(line)
+        // Add crisp edges - Subtle lines
+        if(isDay) {
+            const edges = new THREE.EdgesGeometry(geo)
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }))
+            mesh.add(line)
+        }
 
         mesh.position.set(
           startX + c*(w+gap),
@@ -313,7 +334,7 @@ const Game = (()=>{
   }
 
   const spawnParticles = (pos, color) => {
-    const count = 40
+    const count = 30
     const geo = new THREE.BufferGeometry()
     const positions = []
     const sizes = []
@@ -321,7 +342,7 @@ const Game = (()=>{
     
     for(let i=0; i<count; i++){
       positions.push(pos.x, pos.y, pos.z)
-      sizes.push(Math.random() * 0.8 + 0.4)
+      sizes.push(Math.random() * 1.5 + 0.5) // Large rings
       lifes.push(1.0)
     }
     
@@ -340,9 +361,9 @@ const Game = (()=>{
       blending: THREE.AdditiveBlending
     })
     
-    // Ensure particles are visible in day mode by boosting color
     if(currentTheme === 'day') {
-       mat.uniforms.color.value.multiplyScalar(2.0) // Extra pop for day
+       mat.uniforms.color.value = new THREE.Color(color).multiplyScalar(1.2)
+       mat.blending = THREE.NormalBlending
     }
     
     const mesh = new THREE.Points(geo, mat)
@@ -352,9 +373,9 @@ const Game = (()=>{
     const velocities = []
     for(let i=0; i<count; i++){
       velocities.push({
-        x: (Math.random()-0.5) * (Math.random() * 2.0), // Burst speed
-        y: (Math.random()-0.5) * (Math.random() * 2.0),
-        z: (Math.random()-0.5) * (Math.random() * 2.0)
+        x: (Math.random()-0.5) * 0.5, // Slow expansion
+        y: (Math.random()-0.5) * 0.5,
+        z: (Math.random()-0.5) * 0.5
       })
     }
     
@@ -599,6 +620,15 @@ const Game = (()=>{
     // Camera sway
     const targetCamX = balls.length > 0 ? balls[0].mesh.position.x * 0.05 : 0
     camera.position.x += (targetCamX - camera.position.x) * dt
+    
+    // Screen shake decay
+    if(camera.userData.shake > 0) {
+        camera.position.x += (Math.random() - 0.5) * camera.userData.shake
+        camera.position.y += (Math.random() - 0.5) * camera.userData.shake
+        camera.userData.shake *= 0.9
+        if(camera.userData.shake < 0.01) camera.userData.shake = 0
+    }
+    
     camera.lookAt(0, 0, -5)
 
     composer.render()
@@ -635,9 +665,12 @@ const Game = (()=>{
         // Play paddle hit sound (pitch slightly based on horizontal velocity)
         Audio.play('paddle', { volume: 0.75, playbackRate: 1 + Math.min(0.6, Math.abs(vel.x) * 0.5) })
 
-        // Squash effect
+         // Squash effect
          paddle.scale.y = 0.5
          setTimeout(()=>paddle.scale.y=1, 100)
+         
+         // Subtle shake on paddle hit
+         camera.userData.shake = 0.15
        }
     }
 
@@ -665,6 +698,9 @@ const Game = (()=>{
         spawnParticles(brick.mesh.position, brick.mesh.material.color)
         // play brick impact sound
         Audio.play('brick', { volume: 0.95, playbackRate: 0.95 + Math.random() * 0.2 })
+        
+        // Screen shake on impact
+        camera.userData.shake = 0.08 // Very subtle
         
         // Chance for powerup (can spawn even while WIDE is active since it extends the timer)
         if(Math.random() < 0.18) spawnPowerup(brick.mesh.position)
@@ -745,13 +781,13 @@ const Game = (()=>{
     // Adjust Bloom based on theme
     if(bloomPass) {
       if(name === 'day') {
-        bloomPass.strength = 0.3
-        bloomPass.threshold = 0.85
-        bloomPass.radius = 0.2
+        bloomPass.strength = 0.35 // A tad more noticeable
+        bloomPass.threshold = 0.7
+        bloomPass.radius = 0.3
       } else {
-        bloomPass.strength = 0.6 // Reset to reasonable night value
-        bloomPass.threshold = 0.1
-        bloomPass.radius = 0.8
+        bloomPass.strength = 0.5 // A tad less excessive
+        bloomPass.threshold = 0.2
+        bloomPass.radius = 0.5
       }
     }
 
