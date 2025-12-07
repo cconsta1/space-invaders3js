@@ -18,7 +18,7 @@ const Game = (()=>{
   let score = 0, lives = 3, level = 1
   let rafId, started = false
   let bloomEnabled = true
-  let currentTheme = 'night'
+  let currentTheme = 'auto'
   let themeTime = 0
   const events = new Map()
   const keys = { ArrowLeft: false, ArrowRight: false }
@@ -51,20 +51,20 @@ const Game = (()=>{
       ball: '#ffffaa'    // Bright glow
     },
     day: {
-      paddle: '#0099ff', // Vivid Blue
-      ball: '#ff2222',   // Vivid Red
-      wall: '#445566',
-      bg: '#f0f4f8',     // Very light/clean
-      grid1: '#cceeff',
-      grid2: '#eef8ff',
-      accent: '#778899',
-      amb: '#ffffff',
-      dir: '#ffffff',
-      floor: '#ddeeff'
+      paddle: '#2a5c6a',
+      ball: '#222222',
+      wall: '#aaaaaa',
+      bg: '#d0d0d0',
+      grid1: '#888888',
+      grid2: '#aaaaaa',
+      accent: '#666666',
+      amb: '#aaaaaa',
+      dir: '#dddddd',
+      floor: '#bbbbbb'
     }
   }
 
-  // Particle Shader - Futuristic Ring/Sparkle
+  // Particle Shader
   const particleVertex = `
     attribute float size;
     attribute float life;
@@ -72,7 +72,7 @@ const Game = (()=>{
     void main() {
       vLife = life;
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size * (300.0 / -mvPosition.z);
+      gl_PointSize = size * (20.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `
@@ -83,12 +83,7 @@ const Game = (()=>{
       vec2 coord = gl_PointCoord - vec2(0.5);
       float dist = length(coord);
       if(dist > 0.5) discard;
-      
-      // Ring effect
-      float ring = smoothstep(0.5, 0.4, dist) - smoothstep(0.4, 0.3, dist);
-      float core = smoothstep(0.1, 0.0, dist);
-      float alpha = (ring * 0.5 + core) * vLife;
-      
+      float alpha = smoothstep(0.5, 0.0, dist) * vLife;
       gl_FragColor = vec4(color, alpha);
     }
   `
@@ -141,9 +136,9 @@ const Game = (()=>{
     // Post Processing (Bloom + Film)
     const renderScene = new RenderPass(scene, camera)
     bloomPass = new UnrealBloomPass(new THREE.Vector2(sizes.width, sizes.height), 1.5, 0.4, 0.85)
-    bloomPass.threshold = 0.2
-    bloomPass.strength = 0.6
-    bloomPass.radius = 0.2
+    bloomPass.threshold = 0.1
+    bloomPass.strength = 1.5
+    bloomPass.radius = 0.6
     bloomPass.enabled = bloomEnabled
 
     const filmPass = new FilmPass(0.25, false) // noise intensity, no scanlines
@@ -154,6 +149,135 @@ const Game = (()=>{
     composer.addPass(bloomPass)
     composer.addPass(filmPass)
     composer.addPass(outputPass)
+    
+    // Grid floor
+    const grid = new THREE.GridHelper(80, 40, '#2a2a40', '#111')
+    grid.position.y = -8
+    grid.position.z = -10
+    scene.add(grid)
+
+    makePaddle()
+    resetBall()
+    makeBricks()
+
+    // Input - Keyboard only
+    window.addEventListener('keydown', e => {
+      if(e.code === 'ArrowLeft') keys.ArrowLeft = true
+      if(e.code === 'ArrowRight') keys.ArrowRight = true
+    })
+    window.addEventListener('keyup', e => {
+      if(e.code === 'ArrowLeft') keys.ArrowLeft = false
+      if(e.code === 'ArrowRight') keys.ArrowRight = false
+    })
+
+    tick()
+  }
+  let canvas, renderer, scene, camera, clock
+  let composer, bloomPass
+  let paddle, balls = [], ballRadius = 0.4, bricks = []
+  let particles = []
+  let powerups = []
+  let activePowerupTimers = []
+  let speedMultiplier = 1
+  let wideActive = false
+  let score = 0, lives = 3, level = 1
+  let rafId, started = false
+  let bloomEnabled = true
+  let currentTheme = 'night'
+  let themeTime = 0
+  const events = new Map()
+  const keys = { ArrowLeft: false, ArrowRight: false }
+
+  // Config
+  const sizes = { width: window.innerWidth, height: window.innerHeight }
+  const play = { x: 12, y: 8, zNear: 4, zFar: -16 }
+  const colors = {
+    paddle: '#00ffff',
+    ball: '#ffffff',
+    wall: '#1a1a2e',
+    bg: '#050510',
+    powerup: '#ff00ff'
+  }
+
+  // Particle Shader
+  const particleVertex = `
+    attribute float size;
+    attribute float life;
+    varying float vLife;
+    void main() {
+      vLife = life;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (20.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `
+  const particleFragment = `
+    uniform vec3 color;
+    varying float vLife;
+    void main() {
+      vec2 coord = gl_PointCoord - vec2(0.5);
+      float dist = length(coord);
+      if(dist > 0.5) discard;
+      float alpha = smoothstep(0.5, 0.0, dist) * vLife;
+      gl_FragColor = vec4(color, alpha);
+    }
+  `
+
+  const emit = (k,v)=> (events.get(k)||[]).forEach(fn=>fn(v))
+  const on = (k,fn)=> { events.set(k, [...(events.get(k)||[]), fn]) }
+
+  const init = ({canvas:cnv})=>{
+    canvas = cnv
+    // Initialize audio context and (optionally) begin background loading
+    Audio.init()
+    // Pointer/touch controls: map pointer X to paddle target
+    const onPointer = (e) => {
+      // support touch/pointer
+      const x = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX) || 0
+      const pct = x / window.innerWidth
+      // Map 0..1 to -play.x .. play.x
+      const target = (pct * (play.x * 2)) - play.x
+      if(paddle) paddle.userData.targetX = THREE.MathUtils.clamp(target, -play.x+2, play.x-2)
+    }
+    window.addEventListener('pointermove', onPointer, { passive: true })
+    window.addEventListener('touchmove', onPointer, { passive: true })
+    
+    // Renderer
+    renderer = new THREE.WebGLRenderer({canvas, antialias:false, powerPreference:'high-performance'})
+    renderer.setSize(sizes.width, sizes.height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.toneMapping = THREE.ReinhardToneMapping
+
+    scene = new THREE.Scene()
+    // Initialize fog before setting theme
+    scene.fog = new THREE.FogExp2(colors.bg, 0.02)
+    setTheme(currentTheme) // Apply initial theme
+
+    camera = new THREE.PerspectiveCamera(50, sizes.width/sizes.height, 0.1, 100)
+    camera.position.set(0, 8, 22)
+    camera.lookAt(0, 0, -4)
+
+    clock = new THREE.Clock()
+
+    // Post Processing (Bloom)
+    const renderScene = new RenderPass(scene, camera)
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(sizes.width, sizes.height), 1.5, 0.4, 0.85)
+    bloomPass.threshold = 0.1
+    bloomPass.strength = 1.5
+    bloomPass.radius = 0.6
+    bloomPass.enabled = bloomEnabled
+
+    composer = new EffectComposer(renderer)
+    composer.addPass(renderScene)
+    composer.addPass(bloomPass)
+
+    // Lighting
+    const amb = new THREE.AmbientLight('#ffffff', 0.2)
+    scene.add(amb)
+    
+    const dir = new THREE.DirectionalLight('#ffffff', 1)
+    dir.position.set(5, 10, 5)
+    scene.add(dir)
     
     // Grid floor
     const grid = new THREE.GridHelper(80, 40, '#2a2a40', '#111')
@@ -270,32 +394,22 @@ const Game = (()=>{
 
     // Shift hue palette each level for visual variety
     const levelHueOffset = ((currentLevel - 1) * 0.15) % 1
-    const isDay = currentTheme === 'day'
     
     for(let r=0; r<rows; r++){
       for(let c=0; c<cols; c++){
         // Gradient colors with level-based hue offset
         const hue = ((c / cols) * 0.2 + (r / rows) * 0.5 + 0.5 + levelHueOffset) % 1
-        const sat = isDay ? 0.85 : 1.0
-        const light = isDay ? 0.6 : 0.5
-        const color = new THREE.Color().setHSL(hue, sat, light)
+        const color = new THREE.Color().setHSL(hue, 1, 0.5)
         
         const mat = new THREE.MeshStandardMaterial({
           color: color,
           emissive: color,
-          emissiveIntensity: isDay ? 0.2 : 0.8, // Less glow in day
+          emissiveIntensity: 0.8,
           roughness: 0.1,
           metalness: 0.9
         })
         
-        const geo = new THREE.BoxGeometry(w, h, 1)
-        const mesh = new THREE.Mesh(geo, mat)
-        
-        // Add crisp edges
-        const edges = new THREE.EdgesGeometry(geo)
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 }))
-        mesh.add(line)
-
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1), mat)
         mesh.position.set(
           startX + c*(w+gap),
           baseY + r*(h+gap),
@@ -313,7 +427,7 @@ const Game = (()=>{
   }
 
   const spawnParticles = (pos, color) => {
-    const count = 40
+    const count = 20
     const geo = new THREE.BufferGeometry()
     const positions = []
     const sizes = []
@@ -321,7 +435,7 @@ const Game = (()=>{
     
     for(let i=0; i<count; i++){
       positions.push(pos.x, pos.y, pos.z)
-      sizes.push(Math.random() * 0.8 + 0.4)
+      sizes.push(Math.random() * 0.5 + 0.2)
       lifes.push(1.0)
     }
     
@@ -340,11 +454,6 @@ const Game = (()=>{
       blending: THREE.AdditiveBlending
     })
     
-    // Ensure particles are visible in day mode by boosting color
-    if(currentTheme === 'day') {
-       mat.uniforms.color.value.multiplyScalar(2.0) // Extra pop for day
-    }
-    
     const mesh = new THREE.Points(geo, mat)
     scene.add(mesh)
     
@@ -352,9 +461,9 @@ const Game = (()=>{
     const velocities = []
     for(let i=0; i<count; i++){
       velocities.push({
-        x: (Math.random()-0.5) * (Math.random() * 2.0), // Burst speed
-        y: (Math.random()-0.5) * (Math.random() * 2.0),
-        z: (Math.random()-0.5) * (Math.random() * 2.0)
+        x: (Math.random()-0.5)*0.8,
+        y: (Math.random()-0.5)*0.8,
+        z: (Math.random()-0.5)*0.8
       })
     }
     
@@ -492,6 +601,16 @@ const Game = (()=>{
     rafId = requestAnimationFrame(tick)
     const dt = Math.min(clock.getDelta(), 0.05)
 
+    if(currentTheme === 'auto') {
+      themeTime += dt
+      if(themeTime > 20) {
+        themeTime = 0
+        // Toggle between day/night
+        const isNight = scene.background.getHex() === new THREE.Color(palettes.night.bg).getHex()
+        setTheme(isNight ? 'day' : 'night')
+      }
+    }
+
     // Keyboard input - Faster paddle
     if(keys.ArrowLeft) paddle.userData.targetX -= 60 * dt
     if(keys.ArrowRight) paddle.userData.targetX += 60 * dt
@@ -612,12 +731,10 @@ const Game = (()=>{
     if(pos.x > play.x || pos.x < -play.x) {
       vel.x *= -1
       pos.x = Math.sign(pos.x) * play.x
-      spawnParticles(pos, colors.wall)
     }
     if(pos.y > play.y) {
       vel.y *= -1
       pos.y = play.y
-      spawnParticles(pos, colors.wall)
     }
 
     // Paddle
@@ -628,7 +745,6 @@ const Game = (()=>{
          
        if(vel.y < 0){
          vel.y *= -1
-         spawnParticles(pos, colors.paddle)
          // English/Spin effect
          vel.x += (pos.x - paddle.position.x) * 0.3
          vel.normalize().multiplyScalar(0.65) // Speed up slightly
@@ -728,33 +844,11 @@ const Game = (()=>{
 
   const setTheme = (name) => {
     if(!scene) return
-    currentTheme = name
     const p = palettes[name] || palettes.night
     
-    // Update global colors so new balls get correct color
-    colors.ball = p.ball
-    colors.paddle = p.paddle
-    
-    // Toggle body class for UI styling
-    if(name === 'day') document.body.classList.add('theme-day')
-    else document.body.classList.remove('theme-day')
-
     scene.background = new THREE.Color(p.bg)
     scene.fog.color = new THREE.Color(p.bg)
     
-    // Adjust Bloom based on theme
-    if(bloomPass) {
-      if(name === 'day') {
-        bloomPass.strength = 0.3
-        bloomPass.threshold = 0.85
-        bloomPass.radius = 0.2
-      } else {
-        bloomPass.strength = 0.6 // Reset to reasonable night value
-        bloomPass.threshold = 0.1
-        bloomPass.radius = 0.8
-      }
-    }
-
     if(paddle && paddle.material) {
       paddle.material.color = new THREE.Color(p.paddle)
       paddle.material.emissive = new THREE.Color(p.paddle)
@@ -767,9 +861,6 @@ const Game = (()=>{
         b.mesh.material.emissive = new THREE.Color(p.ball)
       }
     })
-    
-    // Refresh bricks to match theme saturation
-    makeBricks(level)
   }
 
   const toggleAutoTheme = (enabled) => {

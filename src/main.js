@@ -58,6 +58,44 @@ Game.on('pause', () => {
   Audio.play('uiSwitch', { volume: 0.6 })
 })
 
+// Settings UI
+const settingsBtn = document.getElementById('settings-btn')
+const settingsPanel = document.getElementById('settings-panel')
+const themeToggleBtn = document.getElementById('theme-toggle-btn')
+const bloomToggleBtn = document.getElementById('bloom-toggle-btn')
+
+let bloomEnabled = true
+let themeMode = 'auto' // auto, day, night
+
+if(settingsBtn) {
+  settingsBtn.addEventListener('click', () => {
+    settingsPanel.classList.toggle('hidden')
+    Audio.play('uiClick', { volume: 0.5 })
+  })
+
+  bloomToggleBtn.addEventListener('click', () => {
+    bloomEnabled = !bloomEnabled
+    Game.toggleBloom(bloomEnabled)
+    bloomToggleBtn.textContent = `BLOOM: ${bloomEnabled ? 'ON' : 'OFF'}`
+    Audio.play('uiSwitch', { volume: 0.5 })
+  })
+
+  themeToggleBtn.addEventListener('click', () => {
+    if(themeMode === 'auto') {
+        themeMode = 'night'
+        Game.setTheme('night')
+    } else if(themeMode === 'night') {
+        themeMode = 'day'
+        Game.setTheme('day')
+    } else {
+        themeMode = 'auto'
+        Game.toggleAutoTheme(true)
+    }
+    themeToggleBtn.textContent = `THEME: ${themeMode.toUpperCase()}`
+    Audio.play('uiSwitch', { volume: 0.5 })
+  })
+}
+
 window.addEventListener('resize', ()=>Game.resize())
 
 Game.init({canvas:document.getElementById('c')})

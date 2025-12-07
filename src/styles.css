@@ -1,11 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap');
 
 *{box-sizing:border-box}
-html,body,#app{height:100%;width:100%;margin:0;padding:0;font-family:'Inter', sans-serif; overflow:hidden;}
+html,body,#app{height:100%;width:100%;margin:0;padding:0;font-family:'Share Tech Mono', monospace; overflow:hidden;}
 
 body {
-  background-color: #050510;
-  color: #fff;
+  background-color: #0a0a0c;
+  color: #a0a0a8;
 }
 
 #ui {
@@ -23,25 +23,58 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   text-transform: uppercase;
-  letter-spacing: 2px;
+  letter-spacing: 3px;
 }
 
 .brand {
   font-family: 'Orbitron', sans-serif;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #00ffff;
-  text-shadow: 0 0 10px rgba(0,255,255,0.5);
+  font-size: 1.3rem;
+  font-weight: 400;
+  color: #6a6a70;
+  letter-spacing: 6px;
 }
 
 .stats {
   text-align: right;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 1.2rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 1rem;
 }
 
-.stats div {
-  margin-bottom: 0.5rem;
+.score-display {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.player-label {
+  color: #4a7c8a;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.ai-label {
+  color: #8a5a4a;
+  font-size: 0.85rem;
+  letter-spacing: 2px;
+}
+
+.score-value {
+  font-size: 1.8rem;
+  font-weight: 400;
+  font-family: 'Orbitron', sans-serif;
+}
+
+.score-value.player {
+  color: #6a9caa;
+}
+
+.score-value.ai {
+  color: #aa7a6a;
+}
+
+.vs {
+  color: #3a3a40;
+  font-size: 0.9rem;
 }
 
 .controls {
@@ -53,24 +86,114 @@ body {
 }
 
 button {
-  background: rgba(0, 255, 255, 0.1);
-  border: 1px solid rgba(0, 255, 255, 0.3);
-  color: #00ffff;
+  background: rgba(60, 60, 65, 0.3);
+  border: 1px solid rgba(100, 100, 105, 0.3);
+  color: #8a8a90;
   padding: 1rem 3rem;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 1rem;
-  letter-spacing: 2px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  letter-spacing: 3px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   backdrop-filter: blur(5px);
-  clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
 }
 
 button:hover {
-  background: rgba(0, 255, 255, 0.2);
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
-  transform: translateY(-2px);
+  background: rgba(80, 80, 85, 0.4);
+  border-color: rgba(120, 120, 125, 0.5);
+  color: #c0c0c8;
+  box-shadow: 0 0 15px rgba(100, 100, 110, 0.2);
+}
+
+.donate-btn {
+  color: #c4b998;
+  text-decoration: none;
+  border: 1px solid #c4b998;
+  padding: 0.5rem 1rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  letter-spacing: 2px;
+  transition: all 0.2s;
+  margin-left: 1rem;
+  pointer-events: auto;
+}
+.donate-btn:hover {
+  background: rgba(196, 185, 152, 0.1);
+  box-shadow: 0 0 10px rgba(196, 185, 152, 0.3);
+  color: #fff;
+}
+
+.settings-container {
+  position: absolute;
+  bottom: 2rem;
+  right: 2rem;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  z-index: 100;
+}
+
+.settings-panel {
+  background: rgba(10, 10, 12, 0.95);
+  border: 1px solid #333;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  backdrop-filter: blur(10px);
+  min-width: 140px;
+  margin-bottom: 0.5rem;
+}
+
+.menu-btn {
+  background: transparent;
+  border: 1px solid #444;
+  color: #8a8a90;
+  padding: 0.5rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+.menu-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border-color: #666;
+}
+
+.settings-panel.hidden {
+  display: none;
+}
+
+.icon-btn {
+  background: rgba(30, 30, 35, 0.6);
+  border: 1px solid #333;
+  color: #8a8a90;
+  font-size: 1.2rem;
+  padding: 0.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: 'Share Tech Mono', monospace;
+  border-radius: 50%;
+}
+.icon-btn:hover {
+  color: #fff;
+  border-color: #555;
+  background: rgba(50, 50, 60, 0.8);
+}
+
+button:hover {
+  background: rgba(80, 80, 85, 0.4);
+  border-color: rgba(120, 120, 125, 0.5);
+  color: #b0b0b8;
 }
 
 button.hidden {
@@ -80,7 +203,7 @@ button.hidden {
 #gameover {
   position: absolute;
   inset: 0;
-  background: rgba(5, 5, 16, 0.9);
+  background: rgba(10, 10, 12, 0.95);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -98,18 +221,19 @@ button.hidden {
 
 .gameover-content h1 {
   font-family: 'Orbitron', sans-serif;
-  font-size: 4rem;
-  color: #ff0066;
-  text-shadow: 0 0 20px rgba(255, 0, 102, 0.8);
+  font-size: 3rem;
+  color: #7a7a80;
   margin-bottom: 1rem;
   letter-spacing: 8px;
+  font-weight: 400;
 }
 
 .gameover-content p {
-  font-family: 'Orbitron', sans-serif;
-  font-size: 1.5rem;
-  color: #00ffff;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 1.3rem;
+  color: #5a5a60;
   margin-bottom: 2rem;
+  letter-spacing: 2px;
 }
 
 #hint {
@@ -117,9 +241,9 @@ button.hidden {
   bottom: 1rem;
   width: 100%;
   text-align: center;
-  font-size: 0.8rem;
-  opacity: 0.5;
-  letter-spacing: 1px;
+  font-size: 0.75rem;
+  color: #3a3a40;
+  letter-spacing: 2px;
 }
 
 canvas {
@@ -127,5 +251,22 @@ canvas {
   width: 100%;
   height: 100%;
 }
-/* Ensure touch devices can send pointer events to the canvas */
+
 canvas { touch-action: none; }
+
+/* Day Theme Overrides */
+body.theme-day .donate-btn {
+  color: #556677;
+  border-color: #556677;
+}
+body.theme-day .donate-btn:hover {
+  background: rgba(85, 102, 119, 0.1);
+  color: #000;
+  box-shadow: 0 0 10px rgba(85, 102, 119, 0.3);
+}
+body.theme-day .brand {
+  color: #445566;
+}
+body.theme-day .score-value {
+  text-shadow: none;
+}
