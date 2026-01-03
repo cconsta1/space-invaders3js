@@ -9,58 +9,66 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 const Game = (()=>{
   let canvas, renderer, scene, camera, clock
   let composer, bloomPass
-  let paddle, balls = [], ballRadius = 0.4, bricks = []
+  let playerShip, playerBullets = [], enemyBullets = [], invaders = []
   let particles = []
-  let powerups = []
-  let activePowerupTimers = []
-  let speedMultiplier = 1
-  let wideActive = false
+  let invaderDirection = 1 // 1 = right, -1 = left
+  let invaderSpeed = 0.5
+  let invaderDescendTimer = 0
+  let lastPlayerShot = 0
+  let lastEnemyShot = 0
   let score = 0, lives = 3, level = 1
-  let rafId, started = false
+  let rafId
+  let gameState = 'idle' // idle, playing, paused, levelCleared, gameOver
   let bloomEnabled = true
   let currentTheme = 'night'
-  let themeTime = 0
   const events = new Map()
-  const keys = { ArrowLeft: false, ArrowRight: false }
+  const keys = { ArrowLeft: false, ArrowRight: false, Space: false }
 
   // Config
   const sizes = { width: window.innerWidth, height: window.innerHeight }
   const play = { x: 12, y: 8, zNear: 4, zFar: -16 }
   
-  // Industrial Cyberpunk Palette
+  // Refined Pop-Art Palette - Flat Colors
   const colors = {
-    paddle: '#00f3ff',      // Neon Cyan
-    ball: '#ff0099',        // Neon Magenta
-    wall: '#050505',        // Void Black
-    bg: '#020203',          // Deep dark
-    powerup: '#39ff14',     // Neon Green
-    grid: '#ff0099',        // Magenta Grid
-    accent: '#00f3ff'       // Cyan Accent
+    player: '#4FC3F7',      // Teal/Cyan
+    playerBullet: '#FFD54F', // Butter Yellow
+    invader: '#FF8A65',     // Warm Coral
+    enemyBullet: '#E57373', // Salmon Red
+    wall: '#37474F',        // Deep Blue-Grey
+    bg: '#263238',          // Dark Charcoal
+    grid: '#455A64',        // Slate
+    accent: '#4FC3F7',      // Teal accent
+    mint: '#AED581',        // Muted Mint
+    cream: '#FFF9C4'        // Soft Cream
   }
 
   const palettes = {
     night: { 
       ...colors, 
-      amb: '#111111', 
-      dir: '#ffffff', 
-      floor: '#000000', 
-      grid1: '#ff0099', 
-      grid2: '#220033',
-      bg: '#050505',
-      paddle: '#00f3ff', 
-      ball: '#ff0099'
+      amb: '#455A64', 
+      dir: '#B0BEC5', 
+      floor: '#263238', 
+      grid1: '#455A64', 
+      grid2: '#37474F',
+      bg: '#263238',
+      player: '#4FC3F7', 
+      invader: '#FF8A65'
     },
-    day: { // Vivid, Cartoonish, Industrial
-      paddle: '#ff3300', // Vivid Orange-Red
-      ball: '#111111',   // Dark Matter
-      wall: '#34495e',   // Dark Blue-Grey
-      bg: '#f0f5fa',     // Cool White/Blue tint
-      grid1: '#b0c4de',  // Light Steel Blue
-      grid2: '#e6e6fa',  // Lavender
-      accent: '#ff3300',
-      amb: '#ffffff',
-      dir: '#ffffff',
-      floor: '#ffffff'
+    day: {
+      player: '#0097A7',    // Deep Teal
+      invader: '#FF7043',   // Vivid Coral
+      playerBullet: '#FBC02D', // Golden Yellow
+      enemyBullet: '#E53935', // Red
+      wall: '#78909C',
+      bg: '#FAFAF8',        // Warm Paper White
+      grid1: '#CFD8DC',
+      grid2: '#ECEFF1',
+      accent: '#00ACC1',
+      amb: '#FFFFFF',
+      dir: '#FFFFFF',
+      floor: '#FAFAF8',
+      mint: '#66BB6A',
+      cream: '#FFF59D'
     }
   }
 
@@ -104,14 +112,14 @@ const Game = (()=>{
     canvas = cnv
     // Initialize audio context and (optionally) begin background loading
     Audio.init()
-    // Pointer/touch controls: map pointer X to paddle target
+    // Pointer/touch controls: map pointer X to player ship target
     const onPointer = (e) => {
       // support touch/pointer
       const x = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX) || 0
       const pct = x / window.innerWidth
       // Map 0..1 to -play.x .. play.x
       const target = (pct * (play.x * 2)) - play.x
-      if(paddle) paddle.userData.targetX = THREE.MathUtils.clamp(target, -play.x+2, play.x-2)
+      if(playerShip) playerShip.userData.targetX = THREE.MathUtils.clamp(target, -play.x+1.5, play.x-1.5)
     }
     window.addEventListener('pointermove', onPointer, { passive: true })
     window.addEventListener('touchmove', onPointer, { passive: true })
@@ -123,25 +131,17 @@ const Game = (()=>{
     renderer.toneMapping = THREE.ReinhardToneMapping
 
     scene = new THREE.Scene()
-    // Initialize fog before setting theme - Deep Cyber Fog
-    scene.fog = new THREE.FogExp2(colors.bg, 0.03)
+    // No fog for clean, flat look
+    scene.fog = null
     
-    // Lighting
-    const amb = new THREE.AmbientLight('#111111', 0.5)
+    // Lighting - Simple and flat
+    const amb = new THREE.AmbientLight('#FFFFFF', 1.8)
     scene.add(amb)
     
-    const dir = new THREE.DirectionalLight('#ffffff', 0.5)
-    dir.position.set(5, 10, 5)
+    // Single soft key light for subtle depth
+    const dir = new THREE.DirectionalLight('#FFFFFF', 0.4)
+    dir.position.set(3, 8, 4)
     scene.add(dir)
-
-    // Add some colored point lights for atmosphere
-    const pLight1 = new THREE.PointLight('#00f3ff', 2, 20)
-    pLight1.position.set(-10, 5, -5)
-    scene.add(pLight1)
-
-    const pLight2 = new THREE.PointLight('#ff0099', 2, 20)
-    pLight2.position.set(10, 5, -5)
-    scene.add(pLight2)
 
     setTheme(currentTheme) // Apply initial theme
 
@@ -152,185 +152,231 @@ const Game = (()=>{
 
     clock = new THREE.Clock()
 
-    // Post Processing (Bloom + Film)
+    // Post Processing - Clean and Flat
     const renderScene = new RenderPass(scene, camera)
     
-    // Soft, atmospheric bloom
-    bloomPass = new UnrealBloomPass(new THREE.Vector2(sizes.width, sizes.height), 1.5, 0.4, 0.85)
-    bloomPass.threshold = 0.15
-    bloomPass.strength = 0.8 // Reduced from 1.2
-    bloomPass.radius = 0.4
-    bloomPass.enabled = bloomEnabled
+    // Bloom removed for flat, clean look
+    bloomPass = null
+    bloomEnabled = false
 
-    const filmPass = new FilmPass(0.2, false) // Reduced noise
+    const filmPass = new FilmPass(0.08, false) // Very subtle grain
 
     const outputPass = new OutputPass()
 
     composer = new EffectComposer(renderer)
     composer.addPass(renderScene)
-    composer.addPass(bloomPass)
     composer.addPass(filmPass)
     composer.addPass(outputPass)
     
-    // Grid floor - Subtle Industrial Grid
-    const grid = new THREE.GridHelper(80, 40, '#333333', '#111111')
+    // Grid floor - Subtle retro grid
+    const grid = new THREE.GridHelper(80, 40, colors.grid, colors.bg)
     grid.position.y = -8
     grid.position.z = -10
-    grid.material.opacity = 0.2
+    grid.material.opacity = 0.15
     grid.material.transparent = true
     scene.add(grid)
 
-    makePaddle()
-    resetBall()
-    makeBricks()
+    makePlayerShip()
+    makeInvaders()
 
     // Input - Keyboard only
     window.addEventListener('keydown', e => {
       if(e.code === 'ArrowLeft') keys.ArrowLeft = true
       if(e.code === 'ArrowRight') keys.ArrowRight = true
+      if(e.code === 'Space') {
+        keys.Space = true
+        // Allow spacebar to start/continue game when not playing
+        if(gameState !== 'playing' && gameState !== 'gameOver') {
+          start()
+        }
+      }
     })
     window.addEventListener('keyup', e => {
       if(e.code === 'ArrowLeft') keys.ArrowLeft = false
       if(e.code === 'ArrowRight') keys.ArrowRight = false
+      if(e.code === 'Space') keys.Space = false
     })
 
     tick()
   }
 
-  const makePaddle = ()=>{
-    const geo = new THREE.BoxGeometry(4, 0.5, 1)
-    const mat = new THREE.MeshStandardMaterial({
-      color: colors.paddle,
-      emissive: colors.paddle,
-      emissiveIntensity: 2,
-      roughness: 0.1,
-      metalness: 0.8
+  const makePlayerShip = ()=>{    // Multi-geometry retro ship design
+    playerShip = new THREE.Group()
+    
+    // Main body - sleek triangle
+    const bodyGeo = new THREE.ConeGeometry(0.7, 1.2, 3)
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: colors.player,
+      roughness: 0.9,
+      metalness: 0.0
     })
-    paddle = new THREE.Mesh(geo, mat)
-    paddle.position.set(0, -6, 0)
-    paddle.userData = { targetX: 0 }
-    scene.add(paddle)
-
-    // Paddle light
-    const light = new THREE.PointLight(colors.paddle, 2, 10)
-    light.position.y = 1
-    paddle.add(light)
+    const body = new THREE.Mesh(bodyGeo, bodyMat)
+    body.rotation.z = Math.PI
+    playerShip.add(body)
+    
+    // Cockpit - small sphere
+    const cockpitGeo = new THREE.SphereGeometry(0.2, 8, 8)
+    const cockpitMat = new THREE.MeshStandardMaterial({
+      color: colors.cream,
+      roughness: 0.8,
+      metalness: 0.0
+    })
+    const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat)
+    cockpit.position.y = 0.3
+    playerShip.add(cockpit)
+    
+    // Left wing
+    const wingGeo = new THREE.BoxGeometry(0.4, 0.1, 0.6)
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: colors.player,
+      roughness: 0.9,
+      metalness: 0.0
+    })
+    const leftWing = new THREE.Mesh(wingGeo, wingMat)
+    leftWing.position.set(-0.6, -0.2, 0)
+    playerShip.add(leftWing)
+    
+    // Right wing
+    const rightWing = new THREE.Mesh(wingGeo, wingMat)
+    rightWing.position.set(0.6, -0.2, 0)
+    playerShip.add(rightWing)
+    
+    // Exhaust (minimal)
+    const exhaustGeo = new THREE.SphereGeometry(0.15, 8, 8)
+    const exhaustMat = new THREE.MeshStandardMaterial({
+      color: colors.playerBullet,
+      roughness: 0.7,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.4
+    })
+    const exhaust = new THREE.Mesh(exhaustGeo, exhaustMat)
+    exhaust.position.y = -0.6
+    exhaust.scale.set(1, 0.5, 1)
+    playerShip.add(exhaust)
+    
+    playerShip.position.set(0, -6, 0)
+    playerShip.userData = { targetX: 0 }
+    scene.add(playerShip)
   }
 
-  const createBallMesh = () => {
-    const geo = new THREE.SphereGeometry(ballRadius, 32, 32)
+  const createPlayerBullet = () => {
+    const geo = new THREE.BoxGeometry(0.2, 0.6, 0.2)
     const mat = new THREE.MeshStandardMaterial({
-      color: colors.ball,
-      emissive: colors.ball,
-      emissiveIntensity: 5,
-      toneMapped: false
+      color: colors.playerBullet,
+      roughness: 0.8,
+      metalness: 0.0
     })
     const mesh = new THREE.Mesh(geo, mat)
-    
-    // Trail
-    const trailGeo = new THREE.BufferGeometry()
-    const trailMat = new THREE.LineBasicMaterial({ color: colors.ball, transparent: true, opacity: 0.5 })
-    const trail = new THREE.Line(trailGeo, trailMat)
-    scene.add(trail)
-    
-    return { mesh, trail, history: [], vel: new THREE.Vector3() }
+    mesh.position.copy(playerShip.position)
+    mesh.position.y += 1
+    scene.add(mesh)
+    playerBullets.push({ mesh, vel: new THREE.Vector3(0, 20, 0) })
   }
 
-  const resetBall = ()=>{
-    // Remove existing balls
-    balls.forEach(b => {
-      scene.remove(b.mesh)
-      scene.remove(b.trail)
+  const createEnemyBullet = (pos) => {
+    const geo = new THREE.SphereGeometry(0.2, 8, 8)
+    const mat = new THREE.MeshStandardMaterial({
+      color: colors.enemyBullet,
+      roughness: 0.8,
+      metalness: 0.0
     })
-    balls = []
-
-    const b = createBallMesh()
-    b.mesh.position.set(0, -4, 0)
-    b.vel.set(0,0,0)
-    scene.add(b.mesh)
-    balls.push(b)
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.copy(pos)
+    scene.add(mesh)
+    enemyBullets.push({ mesh, vel: new THREE.Vector3(0, -15, 0) })
   }
 
-  const spawnExtraBalls = () => {
-    if(balls.length === 0) return
-    const origin = balls[0]
-    for(let i=0; i<2; i++){
-      const b = createBallMesh()
-      b.mesh.position.copy(origin.mesh.position)
-      b.vel.copy(origin.vel).applyAxisAngle(new THREE.Vector3(0,0,1), (Math.random()-0.5)*0.5)
-      scene.add(b.mesh)
-      balls.push(b)
-    }
-  }
+  const makeInvaders = (currentLevel = 1)=>{
+    invaders.forEach(inv => scene.remove(inv.mesh))
+    invaders = []
 
-  const addExtraBalls = (count) => {
-    if(balls.length === 0) return
-    const origin = balls[0]
-    for(let i=0; i<count; i++){
-      const b = createBallMesh()
-      b.mesh.position.copy(origin.mesh.position)
-      b.vel.copy(origin.vel).applyAxisAngle(new THREE.Vector3(0,0,1), (Math.random()-0.5)*0.8)
-      scene.add(b.mesh)
-      balls.push(b)
-    }
-  }
-
-  const makeBricks = (currentLevel = 1)=>{
-    bricks.forEach(b=>scene.remove(b.mesh))
-    bricks = []
-
-    const rows = 6
-    const cols = 8
-    const w = 2.2
-    const h = 0.8
-    const gap = 0.2
-    const startX = -((cols * (w+gap)) / 2) + (w+gap)/2
+    const rows = 4
+    const cols = 10
+    const gap = 0.4
+    const startX = -((cols * 1.6) / 2) + 0.8
     const baseY = 4
 
-    // Shift hue palette each level for visual variety
-    const levelHueOffset = ((currentLevel - 1) * 0.15) % 1
     const isDay = currentTheme === 'day'
     
+    // Define invader species colors (soft retro palette)
+    const speciesColors = [
+      { body: colors.invader, accent: colors.mint },      // Row 0: Coral with Mint
+      { body: colors.accent, accent: colors.playerBullet }, // Row 1: Soft Cyan with Yellow
+      { body: colors.mint, accent: colors.invader },       // Row 2: Mint with Coral
+      { body: '#D7BDE2', accent: colors.accent }           // Row 3: Soft Purple with Cyan
+    ]
+    
     for(let r=0; r<rows; r++){
+      const speciesColor = speciesColors[r]
+      
       for(let c=0; c<cols; c++){
-        // Neon Gradient colors
-        const hue = ((c / cols) * 0.3 + (r / rows) * 0.2 + levelHueOffset) % 1
-        const sat = 1.0
-        const light = 0.5
-        const color = new THREE.Color().setHSL(hue, sat, light)
+        const invader = new THREE.Group()
         
-        const mat = new THREE.MeshStandardMaterial({
-          color: color,
-          emissive: color,
-          emissiveIntensity: isDay ? 0.5 : 1.5, // Balanced glow
-          roughness: 0.2,
-          metalness: 0.8
-        })
-        
-        const geo = new THREE.BoxGeometry(w, h, 1)
-        const mesh = new THREE.Mesh(geo, mat)
-        
-        // Add crisp edges - Subtle lines
-        if(isDay) {
-            const edges = new THREE.EdgesGeometry(geo)
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }))
-            mesh.add(line)
+        // Different species design per row
+        if(r === 0 || r === 2) {
+          // Chunky box invader with eyes
+          const bodyGeo = new THREE.BoxGeometry(1.0, 0.7, 0.6)
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: speciesColor.body,
+            roughness: 0.85,
+            metalness: 0.0
+          })
+          const body = new THREE.Mesh(bodyGeo, bodyMat)
+          invader.add(body)
+          
+          // Eyes (two small spheres)
+          const eyeGeo = new THREE.SphereGeometry(0.12, 8, 8)
+          const eyeMat = new THREE.MeshStandardMaterial({
+            color: speciesColor.accent,
+            roughness: 0.7,
+            metalness: 0.0
+          })
+          const leftEye = new THREE.Mesh(eyeGeo, eyeMat)
+          leftEye.position.set(-0.25, 0.15, 0.35)
+          invader.add(leftEye)
+          
+          const rightEye = new THREE.Mesh(eyeGeo, eyeMat)
+          rightEye.position.set(0.25, 0.15, 0.35)
+          invader.add(rightEye)
+          
+        } else {
+          // Stepped/rounded invader
+          const bodyGeo = new THREE.CylinderGeometry(0.5, 0.4, 0.7, 6)
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: speciesColor.body,
+            roughness: 0.85,
+            metalness: 0.0
+          })
+          const body = new THREE.Mesh(bodyGeo, bodyMat)
+          invader.add(body)
+          
+          // Antenna (small cone on top)
+          const antennaGeo = new THREE.ConeGeometry(0.1, 0.3, 4)
+          const antennaMat = new THREE.MeshStandardMaterial({
+            color: speciesColor.accent,
+            roughness: 0.7,
+            metalness: 0.0
+          })
+          const antenna = new THREE.Mesh(antennaGeo, antennaMat)
+          antenna.position.y = 0.5
+          invader.add(antenna)
         }
 
-        mesh.position.set(
-          startX + c*(w+gap),
-          baseY + r*(h+gap),
+        invader.position.set(
+          startX + c * 1.6,
+          baseY + r * 1.2,
           0
         )
         
-        scene.add(mesh)
-        bricks.push({ mesh, w, h, d:1, active:true })
+        scene.add(invader)
+        invaders.push({ mesh: invader, w: 1.2, h: 0.8, active: true })
       }
     }
-
-    // Ensure the ball can reach the highest row before bouncing off the ceiling
-    const highestRowCenter = baseY + (rows - 1) * (h + gap)
-    play.y = highestRowCenter + h / 2 + 1
+    
+    // Reset invader movement
+    invaderDirection = 1
+    invaderSpeed = 0.5 + (currentLevel - 1) * 0.1
   }
 
   const spawnParticles = (pos, color) => {
@@ -382,120 +428,54 @@ const Game = (()=>{
     particles.push({ mesh, velocities, life: 1.0 })
   }
 
-  const spawnPowerup = (pos) => {
-    const r = Math.random()
-    // Distribution: WIDE 65%, MULTI 25%, LIFE 10%
-    let type = 'WIDE'
-    if(r >= 0.65 && r < 0.90) type = 'MULTI'
-    else if(r >= 0.90) type = 'LIFE'
-
-    // Distinct colors: WIDE=blue, MULTI=yellow, LIFE=green
-    let col = '#00aaff' // WIDE blue
-    if(type === 'MULTI') col = '#ffff00' // yellow
-    if(type === 'LIFE') col = '#00ff66' // green
-
-    const geo = new THREE.OctahedronGeometry(0.4)
-    const mat = new THREE.MeshStandardMaterial({ 
-      color: col, 
-      emissive: col, 
-      emissiveIntensity: 2 
-    })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.copy(pos)
-    scene.add(mesh)
-    // play spawn sound (don't spawn while wide is active)
-    Audio.play('powerup_spawn', { volume: 0.8, playbackRate: 1 })
-    powerups.push({ mesh, type, vel: new THREE.Vector3(0, -4, 0) })
-  }
-
   const start = ()=>{
-    if(started) return
-    started = true
-    if(balls.length > 0) {
-      balls[0].vel = new THREE.Vector3((Math.random()-0.5), 1, 0).normalize().multiplyScalar(0.35 * speedMultiplier) // Slower start (adjusted by level)
+    if(gameState === 'playing') return
+    
+    // Handle different states
+    if(gameState === 'levelCleared') {
+      // Start next level
+      level++
+      makeInvaders(level)
+      
+      // Clear any remaining bullets
+      playerBullets.forEach(b => scene.remove(b.mesh))
+      playerBullets = []
+      enemyBullets.forEach(b => scene.remove(b.mesh))
+      enemyBullets = []
     }
-    // Don't reset score and lives on continue
+    
+    gameState = 'playing'
     emit('score', score)
     emit('lives', lives)
+    emit('state', gameState)
   }
 
   const reset = ()=>{
-    started = false
+    gameState = 'idle'
     level = 1
-    resetBall()
-    makeBricks(level)
+    
+    // Clear bullets
+    playerBullets.forEach(b => scene.remove(b.mesh))
+    playerBullets = []
+    enemyBullets.forEach(b => scene.remove(b.mesh))
+    enemyBullets = []
     
     // Clear particles
     particles.forEach(p => scene.remove(p.mesh))
     particles = []
     
-    // Clear powerups
-    powerups.forEach(p => scene.remove(p.mesh))
-    powerups = []
-    
-    // Clear all active powerup timers
-    activePowerupTimers.forEach(timerId => clearTimeout(timerId))
-    activePowerupTimers = []
+    // Reset invaders
+    makeInvaders(level)
 
-    // Reset paddle
-    paddle.position.x = 0
-    paddle.userData.targetX = 0
-    paddle.scale.set(1,1,1)
+    // Reset player ship
+    playerShip.position.x = 0
+    playerShip.userData.targetX = 0
 
     score = 0
     lives = 3
     emit('score', score)
     emit('lives', lives)
-    wideActive = false
-  }
-
-  // Clear transient objects that shouldn't persist between levels
-  const clearLevelTransient = ()=>{
-    // remove powerups
-    powerups.forEach(p => scene.remove(p.mesh))
-    powerups = []
-
-    // remove particles
-    particles.forEach(p => scene.remove(p.mesh))
-    particles = []
-
-    // clear powerup timers
-    activePowerupTimers.forEach(timerId => clearTimeout(timerId))
-    activePowerupTimers = []
-
-    // reset paddle visual state
-    if(paddle) {
-      paddle.scale.set(1,1,1)
-      paddle.position.x = 0
-      if(paddle.material){
-        paddle.material.emissive = new THREE.Color(colors.paddle)
-        paddle.material.color = new THREE.Color(colors.paddle)
-      }
-    }
-    // ensure wide flag is cleared so powerups can spawn again
-    wideActive = false
-  }
-
-  const applyLevelVariation = (lvl)=>{
-    // Simple surprise: pick one of a few visual/feel changes per level
-    speedMultiplier = 1 + Math.min(0.5, (lvl - 1) * 0.05)
-
-    // Cycle paddle colors
-    const colorMode = (lvl - 1) % 3
-    let col
-    if(colorMode === 0) col = colors.paddle // Cyan
-    else if(colorMode === 1) col = '#ff00ff' // Magenta
-    else col = '#ffff00' // Yellow
-
-    if(paddle && paddle.material) {
-      paddle.material.color = new THREE.Color(col)
-      paddle.material.emissive = new THREE.Color(col)
-      // Update point light child
-      if(paddle.children[0]) paddle.children[0].color = new THREE.Color(col)
-    }
-
-    // play a pleasant level-up sound
-    try{ Audio.play('uiSwitch', { volume: 0.9, playbackRate: 1 }) }catch(e){}
+    emit('state', gameState)
   }
 
   const resize = ()=>{
@@ -513,33 +493,171 @@ const Game = (()=>{
     rafId = requestAnimationFrame(tick)
     const dt = Math.min(clock.getDelta(), 0.05)
 
-    // Keyboard input - Faster paddle
-    if(keys.ArrowLeft) paddle.userData.targetX -= 60 * dt
-    if(keys.ArrowRight) paddle.userData.targetX += 60 * dt
-    paddle.userData.targetX = THREE.MathUtils.clamp(paddle.userData.targetX, -play.x+2, play.x-2)
+    // Always allow ship movement (even when paused)
+    if(keys.ArrowLeft) playerShip.userData.targetX -= 60 * dt
+    if(keys.ArrowRight) playerShip.userData.targetX += 60 * dt
+    playerShip.userData.targetX = THREE.MathUtils.clamp(playerShip.userData.targetX, -play.x+1.5, play.x-1.5)
 
-    // Paddle smoothing - Snappier
-    paddle.position.x += (paddle.userData.targetX - paddle.position.x) * 20 * dt
+    // Ship smoothing
+    playerShip.position.x += (playerShip.userData.targetX - playerShip.position.x) * 20 * dt
 
-    if(started){
-      // Update all balls
-      for(let i=balls.length-1; i>=0; i--){
-        const b = balls[i]
-        b.mesh.position.addScaledVector(b.vel, dt * 30) // Slower ball speed
-        
-        // Trail update
-        b.history.push(b.mesh.position.clone())
-        if(b.history.length > 15) b.history.shift()
-        b.trail.geometry.setFromPoints(b.history)
-
-        handleCollisions(b, i)
+    // Only update game logic when playing
+    if(gameState === 'playing'){
+      // Player shooting
+      const now = clock.getElapsedTime()
+      if(keys.Space && (now - lastPlayerShot) > 0.3) {
+        createPlayerBullet()
+        lastPlayerShot = now
+        Audio.play('paddle', { volume: 0.6, playbackRate: 1.2 })
       }
-    } else {
-      if(balls.length > 0){
-        balls[0].mesh.position.x = paddle.position.x
-        balls[0].mesh.position.y = paddle.position.y + 1.5
-        balls[0].history = []
-        balls[0].trail.geometry.setFromPoints([])
+
+      // Update player bullets
+      for(let i=playerBullets.length-1; i>=0; i--){
+        const bullet = playerBullets[i]
+        bullet.mesh.position.addScaledVector(bullet.vel, dt)
+        
+        // Remove if off screen
+        if(bullet.mesh.position.y > 10){
+          scene.remove(bullet.mesh)
+          playerBullets.splice(i, 1)
+          continue
+        }
+        
+        // Check collision with invaders
+        for(let j=invaders.length-1; j>=0; j--){
+          const inv = invaders[j]
+          const dx = Math.abs(bullet.mesh.position.x - inv.mesh.position.x)
+          const dy = Math.abs(bullet.mesh.position.y - inv.mesh.position.y)
+          
+          if(dx < inv.w/2 + 0.2 && dy < inv.h/2 + 0.3){
+            // Hit!
+            const invColor = inv.mesh.children[0]?.material?.color || colors.invader
+            scene.remove(inv.mesh)
+            invaders.splice(j, 1)
+            scene.remove(bullet.mesh)
+            playerBullets.splice(i, 1)
+            
+            spawnParticles(inv.mesh.position, invColor)
+            Audio.play('brick', { volume: 0.8, playbackRate: 1.1 })
+            camera.userData.shake = 0.05
+            
+            score += 100
+            emit('score', score)
+            break
+          }
+        }
+      }
+
+      // Update enemy bullets
+      for(let i=enemyBullets.length-1; i>=0; i--){
+        const bullet = enemyBullets[i]
+        bullet.mesh.position.addScaledVector(bullet.vel, dt)
+        
+        // Remove if off screen
+        if(bullet.mesh.position.y < -10){
+          scene.remove(bullet.mesh)
+          enemyBullets.splice(i, 1)
+          continue
+        }
+        
+        // Check collision with player
+        const dx = Math.abs(bullet.mesh.position.x - playerShip.position.x)
+        const dy = Math.abs(bullet.mesh.position.y - playerShip.position.y)
+        
+        if(dx < 1 && dy < 1){
+          // Hit player!
+          scene.remove(bullet.mesh)
+          enemyBullets.splice(i, 1)
+          
+          spawnParticles(playerShip.position, colors.player)
+          Audio.play('life_lost', { volume: 0.8, playbackRate: 1 })
+          camera.userData.shake = 0.2
+          
+          lives--
+          emit('lives', lives)
+          
+          // Clear all bullets on death
+          enemyBullets.forEach(b => scene.remove(b.mesh))
+          enemyBullets = []
+          playerBullets.forEach(b => scene.remove(b.mesh))
+          playerBullets = []
+          
+          if(lives <= 0){
+            gameState = 'gameOver'
+            emit('gameover', true)
+            emit('state', gameState)
+          } else {
+            // Player death - pause and require input to continue
+            gameState = 'paused'
+            playerShip.position.x = 0
+            playerShip.userData.targetX = 0
+            emit('state', gameState)
+          }
+          break
+        }
+      }
+
+      // Enemy shooting
+      if(invaders.length > 0 && (now - lastEnemyShot) > 1.5){
+        const randomInv = invaders[Math.floor(Math.random() * invaders.length)]
+        createEnemyBullet(randomInv.mesh.position)
+        lastEnemyShot = now
+        Audio.play('paddle', { volume: 0.4, playbackRate: 0.8 })
+      }
+
+      // Move invaders
+      invaderDescendTimer += dt
+      if(invaderDescendTimer > 0.8){
+        invaderDescendTimer = 0
+        
+        // Check if any invader hit the edge
+        let hitEdge = false
+        for(const inv of invaders){
+          if(invaderDirection > 0 && inv.mesh.position.x > play.x - 1){
+            hitEdge = true
+            break
+          }
+          if(invaderDirection < 0 && inv.mesh.position.x < -play.x + 1){
+            hitEdge = true
+            break
+          }
+        }
+        
+        if(hitEdge){
+          // Move down and reverse
+          invaderDirection *= -1
+          for(const inv of invaders){
+            inv.mesh.position.y -= 0.5
+            
+            // Check if invaders reached player
+            if(inv.mesh.position.y < playerShip.position.y + 2){
+              gameState = 'gameOver'
+              lives = 0
+              emit('lives', lives)
+              emit('gameover', true)
+              emit('state', gameState)
+            }
+          }
+        } else {
+          // Move horizontally
+          for(const inv of invaders){
+            inv.mesh.position.x += invaderDirection * invaderSpeed
+          }
+        }
+      }
+
+      // Win condition - level cleared
+      if(invaders.length === 0){
+        // Clear bullets and particles
+        playerBullets.forEach(b => scene.remove(b.mesh))
+        playerBullets = []
+        enemyBullets.forEach(b => scene.remove(b.mesh))
+        enemyBullets = []
+        
+        gameState = 'levelCleared'
+        Audio.play('uiSwitch', { volume: 0.9, playbackRate: 1 })
+        emit('levelCleared', level)
+        emit('state', gameState)
       }
     }
 
@@ -568,57 +686,8 @@ const Game = (()=>{
       }
     }
 
-    // Powerups
-    for(let i=powerups.length-1; i>=0; i--){
-      const p = powerups[i]
-      p.mesh.position.addScaledVector(p.vel, dt)
-      p.mesh.rotation.y += dt * 2
-      
-      // Collision with paddle
-      const paddleWidth = paddle.scale.x * 4
-      if(p.mesh.position.y < paddle.position.y + 1 && 
-         p.mesh.position.y > paddle.position.y - 1 &&
-         Math.abs(p.mesh.position.x - paddle.position.x) < (paddleWidth/2 + 0.8)) {
-           
-           // Apply effect
-           if(p.type === 'WIDE') {
-             // If already active, extend the timer; otherwise start it
-             if(wideActive){
-               // Clear existing timer and set a new one to extend duration
-               activePowerupTimers.forEach(timerId => clearTimeout(timerId))
-               activePowerupTimers = []
-             } else {
-               paddle.scale.x = 1.5
-               wideActive = true
-             }
-             const timerId = setTimeout(()=>{
-               paddle.scale.x = 1
-               wideActive = false
-             }, 8000)
-             activePowerupTimers.push(timerId)
-           } else if (p.type === 'LIFE') {
-             lives++
-             emit('lives', lives)
-           } else if (p.type === 'MULTI') {
-             // Always add 3 balls (stacking: 1->4, 4->7, etc.)
-             addExtraBalls(3)
-           }
-
-           // play collect sound (generic)
-           Audio.play('powerup_collect', { volume: 0.85 })
-           scene.remove(p.mesh)
-           powerups.splice(i, 1)
-           continue
-      }
-
-      if(p.mesh.position.y < -10){
-        scene.remove(p.mesh)
-        powerups.splice(i, 1)
-      }
-    }
-
     // Camera sway
-    const targetCamX = balls.length > 0 ? balls[0].mesh.position.x * 0.05 : 0
+    const targetCamX = playerShip.position.x * 0.05
     camera.position.x += (targetCamX - camera.position.x) * dt
     
     // Screen shake decay
@@ -634,132 +703,9 @@ const Game = (()=>{
     composer.render()
   }
 
-  const handleCollisions = (b, index)=>{
-    const pos = b.mesh.position
-    const vel = b.vel
-
-    // Walls
-    if(pos.x > play.x || pos.x < -play.x) {
-      vel.x *= -1
-      pos.x = Math.sign(pos.x) * play.x
-      spawnParticles(pos, colors.wall)
-    }
-    if(pos.y > play.y) {
-      vel.y *= -1
-      pos.y = play.y
-      spawnParticles(pos, colors.wall)
-    }
-
-    // Paddle
-    const paddleWidth = paddle.scale.x * 4
-    if(pos.y < paddle.position.y + 1 && 
-       pos.y > paddle.position.y - 1 &&
-       Math.abs(pos.x - paddle.position.x) < (paddleWidth/2 + 0.5)) {
-         
-       if(vel.y < 0){
-         vel.y *= -1
-         spawnParticles(pos, colors.paddle)
-         // English/Spin effect
-         vel.x += (pos.x - paddle.position.x) * 0.3
-         vel.normalize().multiplyScalar(0.65) // Speed up slightly
-        // Play paddle hit sound (pitch slightly based on horizontal velocity)
-        Audio.play('paddle', { volume: 0.75, playbackRate: 1 + Math.min(0.6, Math.abs(vel.x) * 0.5) })
-
-         // Squash effect
-         paddle.scale.y = 0.5
-         setTimeout(()=>paddle.scale.y=1, 100)
-         
-         // Subtle shake on paddle hit
-         camera.userData.shake = 0.15
-       }
-    }
-
-    // Bricks
-    for(let i=bricks.length-1; i>=0; i--){
-      const brick = bricks[i]
-
-      // 2D AABB collision detection (X and Y only, since game is 2D in 3D space)
-      const dx = Math.abs(pos.x - brick.mesh.position.x)
-      const dy = Math.abs(pos.y - brick.mesh.position.y)
-      
-      if(dx < (brick.w/2 + ballRadius) && dy < (brick.h/2 + ballRadius)){
-        // Hit!
-        scene.remove(brick.mesh)
-        bricks.splice(i, 1)
-        
-        // Reflect
-        // Determine side
-        const overlapX = (brick.w/2 + ballRadius) - dx
-        const overlapY = (brick.h/2 + ballRadius) - dy
-        
-        if(overlapX < overlapY) vel.x *= -1
-        else vel.y *= -1
-
-        spawnParticles(brick.mesh.position, brick.mesh.material.color)
-        // play brick impact sound
-        Audio.play('brick', { volume: 0.95, playbackRate: 0.95 + Math.random() * 0.2 })
-        
-        // Screen shake on impact
-        camera.userData.shake = 0.08 // Very subtle
-        
-        // Chance for powerup (can spawn even while WIDE is active since it extends the timer)
-        if(Math.random() < 0.18) spawnPowerup(brick.mesh.position)
-
-        score += 100
-        emit('score', score)
-        break // Only one brick per frame
-      }
-    }
-
-    // Death
-    if(pos.y < -10){
-      // Remove ball
-      scene.remove(b.mesh)
-      scene.remove(b.trail)
-      balls.splice(index, 1)
-
-      if(balls.length === 0) {
-        lives--
-        emit('lives', lives)
-        // play life lost sound
-        Audio.play('life_lost', { volume: 0.95, playbackRate: 1 })
-        
-        // Clear all powerups immediately
-        powerups.forEach(p => scene.remove(p.mesh))
-        powerups = []
-        
-        // Clear all active powerup timers and reset paddle
-        activePowerupTimers.forEach(timerId => clearTimeout(timerId))
-        activePowerupTimers = []
-        paddle.scale.set(1,1,1)
-        
-        if(lives <= 0) {
-          started = false
-          emit('gameover', true)
-        } else {
-          resetBall()
-          started = false // Pause before launch
-          emit('pause')
-        }
-      }
-    }
-    
-    // Win
-    if(bricks.length === 0) {
-      // clear any falling powerups/particles so they don't persist into the next level
-      clearLevelTransient()
-      level++
-      applyLevelVariation(level)
-      makeBricks(level)
-      resetBall()
-      started = false
-      emit('pause')
-    }
-  }
-
   const toggleBloom = (enabled) => {
-    bloomEnabled = enabled
-    if(bloomPass) bloomPass.enabled = bloomEnabled
+    // Bloom removed - function kept for compatibility
+    bloomEnabled = false
   }
 
   const setTheme = (name) => {
@@ -767,45 +713,34 @@ const Game = (()=>{
     currentTheme = name
     const p = palettes[name] || palettes.night
     
-    // Update global colors so new balls get correct color
-    colors.ball = p.ball
-    colors.paddle = p.paddle
+    // Update global colors
+    colors.player = p.player
+    colors.invader = p.invader
+    if(p.playerBullet) colors.playerBullet = p.playerBullet
+    if(p.enemyBullet) colors.enemyBullet = p.enemyBullet
     
     // Toggle body class for UI styling
     if(name === 'day') document.body.classList.add('theme-day')
     else document.body.classList.remove('theme-day')
 
     scene.background = new THREE.Color(p.bg)
-    scene.fog.color = new THREE.Color(p.bg)
     
-    // Adjust Bloom based on theme
-    if(bloomPass) {
-      if(name === 'day') {
-        bloomPass.strength = 0.35 // A tad more noticeable
-        bloomPass.threshold = 0.7
-        bloomPass.radius = 0.3
-      } else {
-        bloomPass.strength = 0.5 // A tad less excessive
-        bloomPass.threshold = 0.2
-        bloomPass.radius = 0.5
-      }
-    }
+    // No fog for clean look
+    scene.fog = null
 
-    if(paddle && paddle.material) {
-      paddle.material.color = new THREE.Color(p.paddle)
-      paddle.material.emissive = new THREE.Color(p.paddle)
-      if(paddle.children[0]) paddle.children[0].color = new THREE.Color(p.paddle)
+    // Update player ship colors (it's a group now)
+    if(playerShip && playerShip.children) {
+      playerShip.children.forEach(child => {
+        if(child.material && !child.isPointLight) {
+          if(child !== playerShip.children[1]) { // Skip cockpit
+            child.material.color = new THREE.Color(p.player)
+          }
+        }
+      })
     }
     
-    balls.forEach(b => {
-      if(b.mesh) {
-        b.mesh.material.color = new THREE.Color(p.ball)
-        b.mesh.material.emissive = new THREE.Color(p.ball)
-      }
-    })
-    
-    // Refresh bricks to match theme saturation
-    makeBricks(level)
+    // Refresh invaders to match theme
+    makeInvaders(level)
   }
 
   const toggleAutoTheme = (enabled) => {

@@ -11,16 +11,8 @@ const restartBtn = document.getElementById('restart')
 let currentScore = 0
 
 startBtn.addEventListener('click', ()=>{
-  // If the Start button was repurposed as 'Play Again', reset first
-  if(startBtn.textContent === 'Play Again'){
-    // Hide any overlay and reset the game state before starting
-    const gameover = document.getElementById('gameover')
-    if(gameover) gameover.classList.add('hidden')
-    console.log('Start button pressed: Play Again -> resetting')
-    Game.reset()
-  }
+  console.log('Start button pressed')
   startBtn.classList.add('hidden')
-  console.log('Start button pressed: starting')
   // Ensure audio context is resumed (user gesture) and play click
   Audio.resume().then(()=>{
     Audio.play('uiClick', { volume: 0.9 })
@@ -31,7 +23,6 @@ startBtn.addEventListener('click', ()=>{
 restartBtn.addEventListener('click', ()=>{
   console.log('Restart button clicked')
   gameoverEl.classList.add('hidden')
-  // Also hide the top start button and set it back to 'Start'
   startBtn.textContent = 'Start'
   startBtn.classList.add('hidden')
   Audio.resume().then(()=>Audio.play('uiClick', { volume: 0.9 }))
@@ -47,15 +38,21 @@ Game.on('lives', l => livesEl.textContent = l)
 Game.on('gameover', () => {
   finalScoreEl.textContent = currentScore
   gameoverEl.classList.remove('hidden')
-  // Also update the Start button to act as a fallback Restart
-  startBtn.textContent = 'Play Again'
-  startBtn.classList.remove('hidden')
   Audio.play('life_lost', { volume: 0.8 })
 })
-Game.on('pause', () => {
-  startBtn.textContent = 'Continue'
+Game.on('levelCleared', (lvl) => {
+  startBtn.textContent = `Start Level ${lvl + 1}`
   startBtn.classList.remove('hidden')
-  Audio.play('uiSwitch', { volume: 0.6 })
+  Audio.play('uiSwitch', { volume: 0.9 })
+})
+Game.on('state', (state) => {
+  console.log('Game state:', state)
+  if(state === 'paused') {
+    startBtn.textContent = 'Continue'
+    startBtn.classList.remove('hidden')
+  } else if(state === 'playing') {
+    startBtn.classList.add('hidden')
+  }
 })
 
 // Settings UI
@@ -64,8 +61,7 @@ const settingsPanel = document.getElementById('settings-panel')
 const themeToggleBtn = document.getElementById('theme-toggle-btn')
 const bloomToggleBtn = document.getElementById('bloom-toggle-btn')
 
-let bloomEnabled = true
-let themeMode = 'auto' // auto, day, night
+let themeMode = 'night' // auto, day, night
 
 if(settingsBtn) {
   settingsBtn.addEventListener('click', () => {
@@ -73,23 +69,16 @@ if(settingsBtn) {
     Audio.play('uiClick', { volume: 0.5 })
   })
 
-  bloomToggleBtn.addEventListener('click', () => {
-    bloomEnabled = !bloomEnabled
-    Game.toggleBloom(bloomEnabled)
-    bloomToggleBtn.textContent = `BLOOM: ${bloomEnabled ? 'ON' : 'OFF'}`
-    Audio.play('uiSwitch', { volume: 0.5 })
-  })
+  // Hide bloom toggle (bloom removed)
+  if(bloomToggleBtn) bloomToggleBtn.style.display = 'none'
 
   themeToggleBtn.addEventListener('click', () => {
-    if(themeMode === 'auto') {
-        themeMode = 'night'
-        Game.setTheme('night')
-    } else if(themeMode === 'night') {
+    if(themeMode === 'night') {
         themeMode = 'day'
         Game.setTheme('day')
     } else {
-        themeMode = 'auto'
-        Game.toggleAutoTheme(true)
+        themeMode = 'night'
+        Game.setTheme('night')
     }
     themeToggleBtn.textContent = `THEME: ${themeMode.toUpperCase()}`
     Audio.play('uiSwitch', { volume: 0.5 })
